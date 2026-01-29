@@ -40,8 +40,7 @@ Collects system metrics to train ML model for CPU temperature prediction.
 
 1. **Clone this repository:**
    ```bash
-   git clone <your-repo-url>
-   cd AI-project
+   git clone https://github.com/RudrakshChugh/Predict-CPU-Temperature
    ```
 
 2. **Install OpenHardwareMonitor:**
