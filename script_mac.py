@@ -96,10 +96,11 @@ def get_voltage_current(cpu_util):
 def get_ambient_temperature(cpu_temp):
     """
     Estimate ambient temperature
+    Estimated as CPU temp minus ~12°C (typical delta)
     """
     if cpu_temp is not None:
         ambient = cpu_temp - 12
-        return round(max(20, min(30, ambient)), 2)
+        return round(ambient, 2)
     return 25.0
 
 
