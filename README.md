@@ -2,7 +2,7 @@
 
 Collects system metrics to train ML model for CPU temperature prediction.
 
-## 🚀 Quick Start
+##  Quick Start
 
 ### Prerequisites
 - **Windows 10/11** OR **macOS**
@@ -11,7 +11,7 @@ Collects system metrics to train ML model for CPU temperature prediction.
 
 ### Platform-Specific Setup
 
-#### 🪟 **Windows Users**
+####  **Windows Users**
 
 1. **Install OpenHardwareMonitor:**
    - Download from https://openhardwaremonitor.org/
@@ -20,7 +20,7 @@ Collects system metrics to train ML model for CPU temperature prediction.
 
 2. **Use:** `script_windows.py`
 
-#### 🍎 **macOS Users**
+####  **macOS Users**
 
 1. **Install temperature monitoring tool** (choose one):
    
@@ -88,20 +88,20 @@ Collects system metrics to train ML model for CPU temperature prediction.
 - Voltage & current
 - System ID
 
-## 🔒 Safety
+##  Safety
 
-✅ **100% Read-only** - No system modifications  
-✅ Only monitors system metrics  
-✅ Only writes to CSV files  
+ **100% Read-only** - No system modifications  
+ Only monitors system metrics  
+ Only writes to CSV files  
 
-## 📁 Files
+##  Files
 
 - `script_windows.py` - Data collection script for Windows
 - `script_mac.py` - Data collection script for macOS
 - `combine.py` - Combines CSV files from all systems
 - `requirements.txt` - Python dependencies
 
-## 📝 Output
+## Output
 
 Each system generates: `system_S1.csv`, `system_S2.csv`, etc.  
 Combined output: `combined_system_data.csv`
