@@ -78,7 +78,7 @@ Collects system metrics to train ML model for CPU temperature prediction.
    python combine.py
    ```
 
-## 📊 Data Collected
+##  Data Collected
 
 - CPU utilization
 - Memory usage
