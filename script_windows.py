@@ -32,6 +32,10 @@ class SystemMonitor:
         self.cpu_util_60s = deque(maxlen=60)
         self.cpu_temp_hist = deque(maxlen=5)
 
+        # Disk I/O tracking
+        self.last_disk_io = psutil.disk_io_counters()
+        self.last_io_time = time.time()
+
         self.last_idle_time = time.time()
         
         # Seed psutil cpu calculation
@@ -83,7 +87,8 @@ class SystemMonitor:
                 "mem_util", "clock_speed", "clock_speed_max", "cpu_temp",
                 "cpu_temp_prev_1s", "cpu_temp_prev_5s", "ambient_temp",
                 "voltage", "current", "power_estimated", "power_source",
-                "time_since_idle", "system_id"
+                "time_since_idle", "num_processes", "disk_read_mb_s", "disk_write_mb_s",
+                "system_id"
             ])
 
             start_time = time.time()
@@ -112,6 +117,26 @@ class SystemMonitor:
                     # 4. Idle Tracking
                     if cpu_util < IDLE_THRESHOLD:
                         self.last_idle_time = time.time()
+                    
+                    # 4b. Process Count
+                    num_processes = len(psutil.pids())
+                    
+                    # 4c. Disk I/O Rate
+                    current_disk_io = psutil.disk_io_counters()
+                    current_time = time.time()
+                    time_delta = current_time - self.last_io_time
+                    
+                    if current_disk_io and self.last_disk_io and time_delta > 0:
+                        read_bytes_delta = current_disk_io.read_bytes - self.last_disk_io.read_bytes
+                        write_bytes_delta = current_disk_io.write_bytes - self.last_disk_io.write_bytes
+                        disk_read_mb_s = round((read_bytes_delta / time_delta) / (1024 * 1024), 2)
+                        disk_write_mb_s = round((write_bytes_delta / time_delta) / (1024 * 1024), 2)
+                    else:
+                        disk_read_mb_s = 0.0
+                        disk_write_mb_s = 0.0
+                    
+                    self.last_disk_io = current_disk_io
+                    self.last_io_time = current_time
                     time_since_idle = round(time.time() - self.last_idle_time, 2)
 
                     # 5. Rolling Statistics
@@ -137,7 +162,8 @@ class SystemMonitor:
                         mem_util, clock_speed, self.clock_speed_max, cpu_temp,
                         temp_prev_1s, temp_prev_5s, ambient_temp,
                         voltage, current, power_estimated, power_source,
-                        time_since_idle, self.system_id
+                        time_since_idle, num_processes, disk_read_mb_s, disk_write_mb_s,
+                        self.system_id
                     ])
 
                     # Console Output
