@@ -10,6 +10,7 @@ SYSTEM_ID = "S2"
 OUTPUT_FILE = f"system_{SYSTEM_ID}_new.csv"
 SAMPLING_INTERVAL = 1.0  # seconds
 IDLE_THRESHOLD = 5.0     # CPU % below which system is considered idle
+DURATION_MINUTES = 30    # Duration to run the script (in minutes), set to None for infinite
 
 class SystemMonitor:
     def __init__(self):
@@ -64,7 +65,12 @@ class SystemMonitor:
 
     def run(self):
         print(f"Logging system data to {self.output_file}")
+        if DURATION_MINUTES:
+            print(f"Script will run for {DURATION_MINUTES} minutes")
         print("Press Ctrl+C to stop\n")
+
+        start_time = time.time()
+        end_time = start_time + (DURATION_MINUTES * 60) if DURATION_MINUTES else None
 
         with open(self.output_file, mode="w", newline="") as file:
             writer = csv.writer(file)
@@ -80,6 +86,12 @@ class SystemMonitor:
 
             try:
                 while True:
+                    # Check if duration has elapsed
+                    if end_time and time.time() >= end_time:
+                        print("\n\nTimer expired. Data collection stopped.")
+                        print(f"Saved to {self.output_file}")
+                        break
+
                     loop_start = time.time()
 
                     # --- Basic metrics ---
@@ -161,8 +173,18 @@ class SystemMonitor:
                         self.system_id
                     ])
 
+                    # Display with remaining time
+                    elapsed = time.time() - start_time
+                    if end_time:
+                        remaining = end_time - time.time()
+                        mins_remaining = int(remaining // 60)
+                        secs_remaining = int(remaining % 60)
+                        time_str = f" | Time Left: {mins_remaining:02d}:{secs_remaining:02d}"
+                    else:
+                        time_str = ""
+
                     print(
-                        f"\rCPU: {cpu_util:5.1f}% | Temp: {cpu_temp if cpu_temp else 'N/A'}°C | Power: {power_estimated}W",
+                        f"\rCPU: {cpu_util:5.1f}% | Temp: {cpu_temp if cpu_temp else 'N/A'}°C | Power: {power_estimated}W{time_str}",
                         end="", flush=True
                     )
 
