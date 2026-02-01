@@ -8,8 +8,9 @@ venv/
 env/
 ENV/
 
-# Data files (don't commit collected data)
+# Data files
 *.csv
+ML/data/
 
 # IDE
 .vscode/

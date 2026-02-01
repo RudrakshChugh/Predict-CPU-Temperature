@@ -8,8 +8,11 @@ from datetime import datetime
 import numpy as np
 from sklearn.metrics import mean_absolute_error, mean_squared_error
 
+import os
+
 # --- CONFIGURATION ---
-MODEL_FILE = "cpu_xgboost_model3.pkl"
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+MODEL_FILE = os.path.join(BASE_DIR, "models", "cpu_xgboost_model.pkl")
 SAMPLING_INTERVAL = 1.0  # seconds
 IDLE_THRESHOLD = 5.0     # CPU % below which system is considered idle
 

@@ -5,9 +5,12 @@ from datetime import datetime
 import wmi
 from collections import deque
 
+import os
+
 # --- CONFIGURATION ---
 SYSTEM_ID = "S2"
-OUTPUT_FILE = f"system_{SYSTEM_ID}_new.csv"
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+OUTPUT_FILE = os.path.join(BASE_DIR, "data", f"system_{SYSTEM_ID}_new.csv")
 SAMPLING_INTERVAL = 1.0  # seconds
 IDLE_THRESHOLD = 5.0     # CPU % below which system is considered idle
 DURATION_MINUTES = 30    # Duration to run the script (in minutes), set to None for infinite

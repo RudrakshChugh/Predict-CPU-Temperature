@@ -7,10 +7,13 @@ import matplotlib.pyplot as plt
 import joblib
 from datetime import datetime
 
+import os
+
 # --- CONFIGURATION ---
-CSV_FILE = "combined_system_data.csv"  
-MODEL_OUTPUT = "cpu_xgboost_model.pkl"
-RESULTS_OUTPUT = "training_results.txt"
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+CSV_FILE = os.path.join(BASE_DIR, "data", "combined_system_data.csv")
+MODEL_OUTPUT = os.path.join(BASE_DIR, "models", "cpu_xgboost_model.pkl")
+RESULTS_OUTPUT = os.path.join(BASE_DIR, "models", "training_results.txt")
 
 print("="*60)
 print("CPU Temperature Prediction - Enhanced XGBoost Training")
@@ -347,8 +350,10 @@ else:
     axes[1, 2].axis('off')
 
 plt.tight_layout()
-plt.savefig('xgboost_results.png', dpi=300, bbox_inches='tight')
-print(f"   ✓ Visualization saved to: xgboost_results.png")
+VISUALIZATION_OUTPUT = os.path.join(BASE_DIR, "models", "xgboost_results.png")
+plt.tight_layout()
+plt.savefig(VISUALIZATION_OUTPUT, dpi=300, bbox_inches='tight')
+print(f"   ✓ Visualization saved to: {VISUALIZATION_OUTPUT}")
 
 print(f"\n{'='*60}")
 print(f"ENHANCED TRAINING COMPLETE!")
