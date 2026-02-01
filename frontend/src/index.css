@@ -1,0 +1,128 @@
+:root {
+  /* Core Colors - Monitoring Station Aesthetic */
+  --bg-app: #09090b; /* Very dark, almost black */
+  --bg-panel: #121214;
+  --bg-card: #1c1c1f;
+  
+  --border-subtle: #27272a;
+  --border-focus: #3f3f46;
+
+  /* Typography Colors */
+  --text-primary: #e4e4e7;
+  --text-secondary: #a1a1aa;
+  --text-muted: #71717a;
+  --text-mono: #d4d4d8; /* Brighter for numbers */
+
+  /* Semantic Colors (Temperature/Status) */
+  --color-cool: #3b82f6;   /* Blue */
+  --color-warm: #f59e0b;   /* Amber */
+  --color-hot: #ef4444;    /* Red */
+  
+  --status-stable: #10b981; /* Emerald */
+  --status-watch: #f59e0b;
+  --status-critical: #ef4444;
+
+  /* UI Accents */
+  --accent-primary: #fafafa;
+  --accent-glow: rgba(255, 255, 255, 0.05);
+
+  /* Spacing & Layout */
+  --spacing-xs: 0.25rem;
+  --spacing-sm: 0.5rem;
+  --spacing-md: 1rem;
+  --spacing-lg: 1.5rem;
+  --spacing-xl: 2rem;
+
+  /* Typography */
+  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --font-mono: 'JetBrains Mono', 'Fira Code', 'Roboto Mono', monospace;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background-color: var(--bg-app);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  font-feature-settings: "rlig" 1, "calt" 1;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  overflow-x: hidden;
+  line-height: 1.5;
+  height: 100vh;
+  width: 100vw;
+}
+
+#root {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Utility Classes for Typography */
+.text-mono {
+  font-family: var(--font-mono);
+  letter-spacing: -0.02em;
+}
+
+.text-label {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
+.text-value {
+  font-family: var(--font-mono);
+  font-size: 1.125rem;
+  font-weight: 400;
+  color: var(--text-primary);
+}
+
+.text-hero {
+  font-size: 2.5rem;
+  font-weight: 300;
+  letter-spacing: -0.03em;
+}
+
+/* Layout Utilities */
+.panel {
+  background: var(--bg-panel);
+  border: 1px solid var(--border-subtle);
+  border-radius: 4px; /* Minimal rounding */
+  padding: var(--spacing-lg);
+  transition: border-color 0.3s ease;
+}
+
+.panel:hover {
+  border-color: var(--border-focus);
+}
+
+.grid-layout {
+  display: grid;
+  height: 100%;
+  padding: var(--spacing-xl);
+  gap: var(--spacing-xl);
+  grid-template-columns: 280px 1fr 340px; /* Context | System (Main) | Intelligence/Decision */
+  grid-template-rows: 100%;
+}
+
+@media (max-width: 1200px) {
+  .grid-layout {
+    grid-template-columns: 1fr 1fr;
+    grid-template-rows: auto auto;
+  }
+}
+
+@media (max-width: 768px) {
+  .grid-layout {
+    grid-template-columns: 1fr;
+    padding: var(--spacing-md);
+  }
+}
