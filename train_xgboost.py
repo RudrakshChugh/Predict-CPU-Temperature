@@ -8,8 +8,8 @@ import joblib
 from datetime import datetime
 
 # --- CONFIGURATION ---
-CSV_FILE = "system_S2.csv"  # Change this to your CSV file
-MODEL_OUTPUT = "cpu_temp_xgboost_model.pkl"
+CSV_FILE = "combined_system_data.csv"  
+MODEL_OUTPUT = "cpu_xgboost_model.pkl"
 RESULTS_OUTPUT = "training_results.txt"
 
 print("="*60)
@@ -148,6 +148,26 @@ train_rmse = np.sqrt(mean_squared_error(y_train, y_train_pred))
 val_rmse = np.sqrt(mean_squared_error(y_val, y_val_pred))
 test_rmse = np.sqrt(mean_squared_error(y_test, y_test_pred))
 
+# Calculate confidence scores based on prediction accuracy
+print(f"\n9.5. Calculating Confidence Scores...")
+test_errors = np.abs(y_test - y_test_pred)
+
+# Confidence levels based on error thresholds
+within_1deg = (test_errors <= 1.0).sum() / len(test_errors) * 100
+within_2deg = (test_errors <= 2.0).sum() / len(test_errors) * 100
+within_3deg = (test_errors <= 3.0).sum() / len(test_errors) * 100
+
+# Overall model confidence score (0-100)
+# Based on: R² score (50%), MAE (30%), and prediction consistency (20%)
+r2_component = test_r2 * 50  # R² contributes 50%
+mae_component = max(0, (3 - test_mae) / 3 * 30)  # MAE contributes 30% (3°C = 0%, 0°C = 30%)
+consistency_component = within_2deg * 0.2  # Predictions within 2°C contribute 20%
+
+overall_confidence = round(r2_component + mae_component + consistency_component, 1)
+
+print(f"   ✓ Confidence score calculated: {overall_confidence}%")
+
+
 # Display results
 print(f"\n{'='*60}")
 print(f"TRAINING RESULTS")
@@ -170,6 +190,13 @@ print(f"   - RMSE:      {test_rmse:.2f}°C")
 print(f"\nOverfitting Analysis:")
 print(f"   - Train-Val Gap:  {abs(train_r2 - val_r2)*100:.2f}%")
 print(f"   - Train-Test Gap: {abs(train_r2 - test_r2)*100:.2f}%")
+
+print(f"\nModel Confidence Score:")
+print(f"   - Overall Confidence: {overall_confidence}%")
+print(f"   - Predictions within ±1°C: {within_1deg:.1f}%")
+print(f"   - Predictions within ±2°C: {within_2deg:.1f}%")
+print(f"   - Predictions within ±3°C: {within_3deg:.1f}%")
+
 
 # Feature importance
 print(f"\n{'='*60}")
@@ -223,6 +250,19 @@ with open(RESULTS_OUTPUT, 'w') as f:
     f.write(f"  Train-Test Gap: {abs(train_r2 - test_r2)*100:.2f}%\n")
     f.write(f"\nCross-Validation:\n")
     f.write(f"  Mean CV R²: {cv_scores.mean():.4f} (+/- {cv_scores.std() * 2:.4f})\n")
+    f.write(f"\n{'='*60}\n")
+    f.write("MODEL CONFIDENCE SCORE\n")
+    f.write(f"{'='*60}\n")
+    f.write(f"\nOverall Confidence: {overall_confidence}%\n")
+    f.write(f"\nPrediction Accuracy Breakdown:\n")
+    f.write(f"  Predictions within ±1°C: {within_1deg:.1f}%\n")
+    f.write(f"  Predictions within ±2°C: {within_2deg:.1f}%\n")
+    f.write(f"  Predictions within ±3°C: {within_3deg:.1f}%\n")
+    f.write(f"\nConfidence Calculation:\n")
+    f.write(f"  - R² Score Component (50%):        {r2_component:.1f}\n")
+    f.write(f"  - MAE Component (30%):             {mae_component:.1f}\n")
+    f.write(f"  - Consistency Component (20%):     {consistency_component:.1f}\n")
+    f.write(f"  - Total Confidence Score:          {overall_confidence}%\n")
     f.write(f"\n{'='*60}\n")
     f.write("FEATURE IMPORTANCE (Top 10)\n")
     f.write(f"{'='*60}\n")
