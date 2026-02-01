@@ -6,11 +6,11 @@ import wmi
 from collections import deque
 
 # --- CONFIGURATION ---
-SYSTEM_ID = "S1"
-OUTPUT_FILE = f"system_{SYSTEM_ID}.csv"
+SYSTEM_ID = "S2"
+OUTPUT_FILE = f"system_{SYSTEM_ID}_new.csv"
 SAMPLING_INTERVAL = 1.0  # seconds
 IDLE_THRESHOLD = 5.0     # CPU % below which system is considered idle
-DURATION_MINUTES = 90# Duration to run the script (in minutes), set to None for infinite
+DURATION_MINUTES = 30    # Duration to run the script (in minutes), set to None for infinite
 
 class SystemMonitor:
     def __init__(self):
