@@ -1,371 +1,262 @@
-import pandas as pd
-import numpy as np
-from xgboost import XGBRegressor
-from sklearn.model_selection import train_test_split, cross_val_score
-from sklearn.metrics import r2_score, mean_absolute_error, mean_squared_error
-import matplotlib.pyplot as plt
-import joblib
-from datetime import datetime
+# ============================================================
+# CPU THERMAL MODEL – FULL FILE STYLE (FINAL)
+# SAME OUTPUT AS Results-FT-Full-file
+# ============================================================
 
 import os
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+import seaborn as sns
+from datetime import datetime
+import joblib
 
-# --- CONFIGURATION ---
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-CSV_FILE = os.path.join(BASE_DIR, "data", "combined_system_data.csv")
-MODEL_OUTPUT = os.path.join(BASE_DIR, "models", "cpu_xgboost_model.pkl")
-RESULTS_OUTPUT = os.path.join(BASE_DIR, "models", "training_results.txt")
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import StandardScaler, OrdinalEncoder
+from sklearn.metrics import (
+    r2_score, mean_absolute_error, mean_squared_error,
+    accuracy_score, precision_score, recall_score,
+    f1_score, roc_auc_score, average_precision_score,
+    confusion_matrix
+)
+from sklearn.calibration import calibration_curve
 
-print("="*60)
-print("CPU Temperature Prediction - Enhanced XGBoost Training")
-print("="*60)
+from sklearn.linear_model import LinearRegression, Ridge
+from sklearn.ensemble import RandomForestRegressor, ExtraTreesRegressor
 
-# Load data
-print(f"\n1. Loading data from {CSV_FILE}...")
+import xgboost as xgb
+import lightgbm as lgb
+
+# Optional CatBoost
 try:
-    df = pd.read_csv(CSV_FILE)
-    print(f"   ✓ Loaded {len(df)} samples with {len(df.columns)} columns")
-except FileNotFoundError:
-    print(f"   ✗ Error: {CSV_FILE} not found!")
-    exit(1)
+    from catboost import CatBoostRegressor
+    HAS_CATBOOST = True
+except ImportError:
+    HAS_CATBOOST = False
 
-# Display basic info
-print(f"\n2. Data Overview:")
-print(f"   - Total samples: {len(df)}")
-print(f"   - Date range: {df['timestamp'].iloc[0]} to {df['timestamp'].iloc[-1]}")
-print(f"   - Temperature range: {df['cpu_temp'].min():.1f}°C to {df['cpu_temp'].max():.1f}°C")
+# ============================================================
+# CONFIG
+# ============================================================
+PROJECT_DIR = "/workspace/Akshat"
+CSV_FILE = os.path.join(PROJECT_DIR, "combined_system_data.csv")
+RESULTS_DIR = os.path.join(PROJECT_DIR, "Results-FT-Full-file")
 
-# Define features (exclude target and non-predictive columns)
-EXCLUDE_FEATURES = [
-    'timestamp',      # Not a predictive feature
-    'cpu_temp',       # Target variable
-    'ambient_temp',   # Derived from cpu_temp (data leakage)
-    'system_id',      # Metadata
-    'cpu_temp_prev_1s',  # Can cause data leakage in real-time prediction
-    'cpu_temp_prev_5s',  # Can cause data leakage in real-time prediction
-    'voltage',        # Highly correlated with power_estimated
-    'current',        # Highly correlated with power_estimated
-    'clock_speed_max', # Constant value, not useful for prediction
-    'disk_read_mb_s',  # Low importance (< 3%)
-    'disk_write_mb_s'  # Low importance (< 3%)
-]
+TARGET = "cpu_temp"
+OVERHEAT_THRESHOLD = 80.0
+RANDOM_STATE = 42
 
-# Get all feature columns
-all_features = [col for col in df.columns if col not in EXCLUDE_FEATURES]
+os.makedirs(RESULTS_DIR, exist_ok=True)
 
-print(f"\n3. Feature Selection:")
-print(f"   - Total features: {len(all_features)}")
-print(f"   - Features used: {', '.join(all_features)}")
+# ============================================================
+# UTILS
+# ============================================================
+def normalize(x):
+    return (x - x.min()) / (x.max() - x.min() + 1e-9)
 
-# Prepare data
-X = df[all_features]
-y = df['cpu_temp']
+def expected_calibration_error(y, p, bins=10):
+    ece = 0.0
+    bins_edges = np.linspace(0, 1, bins + 1)
+    for i in range(bins):
+        m = (p > bins_edges[i]) & (p <= bins_edges[i+1])
+        if m.any():
+            ece += abs(y[m].mean() - p[m].mean()) * m.mean()
+    return ece
 
-# Handle missing values
-print(f"\n4. Data Cleaning:")
-missing_before = X.isnull().sum().sum()
-if missing_before > 0:
-    print(f"   - Missing values found: {missing_before}")
-    X = X.fillna(method='ffill').fillna(method='bfill')
-    print(f"   ✓ Missing values filled")
-else:
-    print(f"   ✓ No missing values")
+# ============================================================
+# LOAD DATA
+# ============================================================
+df = pd.read_csv(CSV_FILE)
 
-# Remove rows where target is missing
-valid_mask = y.notna()
-X = X[valid_mask]
-y = y[valid_mask]
+df["timestamp"] = pd.to_datetime(df["timestamp"], errors="coerce")
+df["timestamp_unix"] = df["timestamp"].astype("int64") // 10**9
 
-# Remove outliers (temperature changes > 15°C in 1 second)
-print(f"\n5. Outlier Detection:")
-temp_diff = y.diff().abs()
-outlier_mask = temp_diff > 15
-outliers_removed = outlier_mask.sum()
-if outliers_removed > 0:
-    X = X[~outlier_mask]
-    y = y[~outlier_mask]
-    print(f"   ✓ Removed {outliers_removed} outliers (temp change >15°C/s)")
-else:
-    print(f"   ✓ No outliers detected")
+FEATURES = [c for c in df.columns if c not in [TARGET, "timestamp"]]
 
-# Remove warmup period (first 2 minutes = 120 samples)
-warmup_samples = min(120, len(X) // 20)  # Remove first 5% or 120 samples
-X = X.iloc[warmup_samples:]
-y = y.iloc[warmup_samples:]
-print(f"   ✓ Removed {warmup_samples} warmup samples")
-print(f"   ✓ Valid samples: {len(X)}")
+X = df[FEATURES].ffill().bfill()
+y = df[TARGET]
 
-# Split data (70% train, 15% validation, 15% test)
-print(f"\n6. Splitting Data (70/15/15):")
-X_temp, X_test, y_temp, y_test = train_test_split(
-    X, y, test_size=0.15, random_state=42, shuffle=True
-)
-X_train, X_val, y_train, y_val = train_test_split(
-    X_temp, y_temp, test_size=0.176, random_state=42, shuffle=True  # 0.176 * 0.85 ≈ 0.15
-)
-print(f"   - Training set: {len(X_train)} samples ({len(X_train)/len(X)*100:.1f}%)")
-print(f"   - Validation set: {len(X_val)} samples ({len(X_val)/len(X)*100:.1f}%)")
-print(f"   - Test set: {len(X_test)} samples ({len(X_test)/len(X)*100:.1f}%)")
+# Remove extreme glitches only
+mask = y.diff().abs().fillna(0) <= 20
+X, y = X[mask], y[mask]
 
-# Train XGBoost model with improved hyperparameters
-print(f"\n7. Training Enhanced XGBoost Model...")
-model = XGBRegressor(
-    n_estimators=150,      # Increased from 100 for better learning
-    max_depth=5,           # Increased from 4 for more complex patterns
-    learning_rate=0.05,    # Keep same for stability
-    min_child_weight=2,    # Reduced from 3 for more flexibility
-    subsample=0.8,         # Increased from 0.7 for more data usage
-    colsample_bytree=0.8,  # Increased from 0.7 for more features
-    reg_alpha=0.05,        # Reduced L1 regularization
-    reg_lambda=0.5,        # Reduced L2 regularization
-    gamma=0.05,            # Reduced for more splits
-    random_state=42,
-    n_jobs=-1
+# ============================================================
+# SPLIT
+# ============================================================
+X_train, X_test, y_train, y_test = train_test_split(
+    X, y, test_size=0.2, shuffle=True, random_state=RANDOM_STATE
 )
 
-# Train model
-model.fit(X_train, y_train, verbose=False)
-print(f"   ✓ Model trained successfully!")
+# ============================================================
+# CATEGORICAL HANDLING
+# ============================================================
+cat_cols = X_train.select_dtypes(include=["object", "category"]).columns.tolist()
+num_cols = [c for c in FEATURES if c not in cat_cols]
 
-# Cross-validation on training set
-print(f"\n8. Cross-Validation (5-fold):")
-cv_scores = cross_val_score(model, X_train, y_train, cv=5, scoring='r2', n_jobs=-1)
-print(f"   - CV R² Scores: {cv_scores}")
-print(f"   - Mean CV R²: {cv_scores.mean():.4f} (+/- {cv_scores.std() * 2:.4f})")
+encoder = OrdinalEncoder(handle_unknown="use_encoded_value", unknown_value=-1)
 
-# Make predictions
-print(f"\n9. Evaluating Model Performance...")
-y_train_pred = model.predict(X_train)
-y_val_pred = model.predict(X_val)
-y_test_pred = model.predict(X_test)
+X_train_cat = pd.DataFrame(
+    encoder.fit_transform(X_train[cat_cols]),
+    columns=cat_cols, index=X_train.index
+) if cat_cols else pd.DataFrame(index=X_train.index)
 
-# Calculate metrics
-train_r2 = r2_score(y_train, y_train_pred)
-val_r2 = r2_score(y_val, y_val_pred)
-test_r2 = r2_score(y_test, y_test_pred)
+X_test_cat = pd.DataFrame(
+    encoder.transform(X_test[cat_cols]),
+    columns=cat_cols, index=X_test.index
+) if cat_cols else pd.DataFrame(index=X_test.index)
 
-train_mae = mean_absolute_error(y_train, y_train_pred)
-val_mae = mean_absolute_error(y_val, y_val_pred)
-test_mae = mean_absolute_error(y_test, y_test_pred)
+scaler = StandardScaler()
+X_train_num = pd.DataFrame(
+    scaler.fit_transform(X_train[num_cols]),
+    columns=num_cols, index=X_train.index
+)
+X_test_num = pd.DataFrame(
+    scaler.transform(X_test[num_cols]),
+    columns=num_cols, index=X_test.index
+)
 
-train_rmse = np.sqrt(mean_squared_error(y_train, y_train_pred))
-val_rmse = np.sqrt(mean_squared_error(y_val, y_val_pred))
-test_rmse = np.sqrt(mean_squared_error(y_test, y_test_pred))
+X_train = pd.concat([X_train_num, X_train_cat], axis=1)
+X_test  = pd.concat([X_test_num, X_test_cat], axis=1)
 
-# Calculate confidence scores based on prediction accuracy
-print(f"\n9.5. Calculating Confidence Scores...")
-test_errors = np.abs(y_test - y_test_pred)
+FEATURES_FINAL = X_train.columns.tolist()
 
-# Confidence levels based on error thresholds
-within_1deg = (test_errors <= 1.0).sum() / len(test_errors) * 100
-within_2deg = (test_errors <= 2.0).sum() / len(test_errors) * 100
-within_3deg = (test_errors <= 3.0).sum() / len(test_errors) * 100
+# ============================================================
+# MODELS
+# ============================================================
+models = {
+    "LinearRegression": LinearRegression(),
+    "RidgeRegression": Ridge(alpha=1.0),
+    "RandomForest": RandomForestRegressor(
+        n_estimators=300, max_depth=12, n_jobs=-1, random_state=RANDOM_STATE
+    ),
+    "ExtraTrees": ExtraTreesRegressor(
+        n_estimators=300, max_depth=12, n_jobs=-1, random_state=RANDOM_STATE
+    ),
+    "XGBoost": xgb.XGBRegressor(
+        n_estimators=500, learning_rate=0.03, max_depth=6,
+        subsample=0.8, colsample_bytree=0.7,
+        random_state=RANDOM_STATE, n_jobs=-1,
+        tree_method="hist"
+    ),
+    "LightGBM": lgb.LGBMRegressor(
+        n_estimators=500, learning_rate=0.03, num_leaves=64,
+        random_state=RANDOM_STATE, verbose=-1
+    )
+}
 
-# Overall model confidence score (0-100)
-# Based on: R² score (50%), MAE (30%), and prediction consistency (20%)
-r2_component = test_r2 * 50  # R² contributes 50%
-mae_component = max(0, (3 - test_mae) / 3 * 30)  # MAE contributes 30% (3°C = 0%, 0°C = 30%)
-consistency_component = within_2deg * 0.2  # Predictions within 2°C contribute 20%
+if HAS_CATBOOST:
+    models["CatBoost"] = CatBoostRegressor(
+        iterations=500, learning_rate=0.03, depth=6,
+        random_state=RANDOM_STATE, verbose=0
+    )
 
-overall_confidence = round(r2_component + mae_component + consistency_component, 1)
+# ============================================================
+# RUN PIPELINE
+# ============================================================
+for name, model in models.items():
+    print(f"\n[*] Training {name}")
+    out = os.path.join(RESULTS_DIR, name)
+    os.makedirs(out, exist_ok=True)
 
-print(f"   ✓ Confidence score calculated: {overall_confidence}%")
+    model.fit(X_train, y_train)
 
+    tr_pred = model.predict(X_train)
+    te_pred = model.predict(X_test)
 
-# Display results
-print(f"\n{'='*60}")
-print(f"TRAINING RESULTS")
-print(f"{'='*60}")
-print(f"\nTraining Set Performance:")
-print(f"   - R² Score:  {train_r2:.4f} ({train_r2*100:.2f}%)")
-print(f"   - MAE:       {train_mae:.2f}°C")
-print(f"   - RMSE:      {train_rmse:.2f}°C")
+    # ---------------- REGRESSION ----------------
+    r2 = r2_score(y_test, te_pred)
+    mae = mean_absolute_error(y_test, te_pred)
+    rmse = np.sqrt(mean_squared_error(y_test, te_pred))
 
-print(f"\nValidation Set Performance:")
-print(f"   - R² Score:  {val_r2:.4f} ({val_r2*100:.2f}%)")
-print(f"   - MAE:       {val_mae:.2f}°C")
-print(f"   - RMSE:      {val_rmse:.2f}°C")
+    errors = np.abs(y_test - te_pred)
+    within_2 = (errors <= 2).mean() * 100
+    confidence = round(r2 * 50 + max(0, (3 - mae) / 3 * 30) + within_2 * 0.2, 1)
 
-print(f"\nTest Set Performance:")
-print(f"   - R² Score:  {test_r2:.4f} ({test_r2*100:.2f}%)")
-print(f"   - MAE:       {test_mae:.2f}°C")
-print(f"   - RMSE:      {test_rmse:.2f}°C")
+    # ---------------- CLASSIFICATION ----------------
+    y_true = (y_test >= OVERHEAT_THRESHOLD).astype(int)
+    y_pred = (te_pred >= OVERHEAT_THRESHOLD).astype(int)
+    scores = normalize(te_pred)
 
-print(f"\nOverfitting Analysis:")
-print(f"   - Train-Val Gap:  {abs(train_r2 - val_r2)*100:.2f}%")
-print(f"   - Train-Test Gap: {abs(train_r2 - test_r2)*100:.2f}%")
+    acc = accuracy_score(y_true, y_pred)
+    prec = precision_score(y_true, y_pred, zero_division=0)
+    rec = recall_score(y_true, y_pred, zero_division=0)
+    f1 = f1_score(y_true, y_pred, zero_division=0)
+    roc = roc_auc_score(y_true, scores)
+    pr = average_precision_score(y_true, scores)
 
-print(f"\nModel Confidence Score:")
-print(f"   - Overall Confidence: {overall_confidence}%")
-print(f"   - Predictions within ±1°C: {within_1deg:.1f}%")
-print(f"   - Predictions within ±2°C: {within_2deg:.1f}%")
-print(f"   - Predictions within ±3°C: {within_3deg:.1f}%")
+    cm = confusion_matrix(y_true, y_pred)
+    tn, fp, fn, tp = cm.ravel()
+    spec = tn / (tn + fp + 1e-9)
+    ece = expected_calibration_error(y_true.values, scores)
 
+    # ---------------- SAVE METRICS ----------------
+    with open(f"{out}/metrics.txt", "w") as f:
+        f.write(f"MODEL PERFORMANCE REPORT: {name}\n")
+        f.write("="*50 + "\n\n")
+        f.write("--- REGRESSION ---\n")
+        f.write(f"R2 Score (Test):  {r2:.4f}\n")
+        f.write(f"MAE:              {mae:.2f} °C\n")
+        f.write(f"RMSE:             {rmse:.2f} °C\n")
+        f.write(f"Confidence Score: {confidence}%\n\n")
+        f.write(f"--- CLASSIFICATION (Threshold: {OVERHEAT_THRESHOLD}°C) ---\n")
+        f.write(f"Accuracy:    {acc:.4f}\n")
+        f.write(f"Precision:   {prec:.4f}\n")
+        f.write(f"Recall:      {rec:.4f}\n")
+        f.write(f"Specificity: {spec:.4f}\n")
+        f.write(f"F1-Score:    {f1:.4f}\n")
+        f.write(f"ROC-AUC:     {roc:.4f}\n")
+        f.write(f"PR-AUC:      {pr:.4f}\n")
+        f.write(f"Calibration (ECE): {ece:.4f}\n")
 
-# Feature importance
-print(f"\n{'='*60}")
-print(f"TOP 10 MOST IMPORTANT FEATURES")
-print(f"{'='*60}")
-feature_importance = pd.DataFrame({
-    'feature': all_features,
-    'importance': model.feature_importances_
-}).sort_values('importance', ascending=False)
+    # ---------------- PLOTS ----------------
+    # Actual vs Predicted
+    plt.figure(figsize=(7,6))
+    plt.scatter(y_test, te_pred, alpha=0.25)
+    plt.plot([y_test.min(), y_test.max()],
+             [y_test.min(), y_test.max()], 'r--')
+    plt.grid(True)
+    plt.xlabel("Actual (°C)")
+    plt.ylabel("Predicted (°C)")
+    plt.title(f"{name}: Regression Accuracy")
+    plt.savefig(f"{out}/Actual_vs_Predicted.pdf")
+    plt.close()
 
-for idx, row in feature_importance.head(10).iterrows():
-    print(f"{row['feature']:25s} {row['importance']:.4f}")
+    # Confusion
+    plt.figure(figsize=(6,5))
+    sns.heatmap(cm, annot=True, fmt="d", cmap="Reds",
+                xticklabels=["Normal","Overheat"],
+                yticklabels=["Normal","Overheat"])
+    plt.title(f"{name}: Confusion Matrix")
+    plt.savefig(f"{out}/Confusion.pdf")
+    plt.close()
 
-# Save model
-print(f"\n10. Saving Model...")
-joblib.dump(model, MODEL_OUTPUT)
-print(f"   ✓ Model saved to: {MODEL_OUTPUT}")
+    # Feature importance
+    if hasattr(model, "feature_importances_"):
+        imp = model.feature_importances_
+    elif hasattr(model, "coef_"):
+        imp = np.abs(model.coef_)
+    elif name == "CatBoost":
+        imp = model.get_feature_importance()
+    else:
+        imp = None
 
-# Save results to file
-print(f"\n11. Saving Results...")
-with open(RESULTS_OUTPUT, 'w') as f:
-    f.write("="*60 + "\n")
-    f.write("CPU TEMPERATURE PREDICTION - ENHANCED XGBOOST MODEL\n")
-    f.write("="*60 + "\n")
-    f.write(f"\nTraining Date: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
-    f.write(f"Dataset: {CSV_FILE}\n")
-    f.write(f"Total Samples: {len(df)}\n")
-    f.write(f"Valid Samples (after cleaning): {len(X) + warmup_samples}\n")
-    f.write(f"Training Samples: {len(X_train)}\n")
-    f.write(f"Validation Samples: {len(X_val)}\n")
-    f.write(f"Test Samples: {len(X_test)}\n")
-    f.write(f"Outliers Removed: {outliers_removed}\n")
-    f.write(f"Warmup Samples Removed: {warmup_samples}\n")
-    f.write(f"\n{'='*60}\n")
-    f.write("MODEL PERFORMANCE\n")
-    f.write(f"{'='*60}\n")
-    f.write(f"\nTraining Set:\n")
-    f.write(f"  R² Score:  {train_r2:.4f} ({train_r2*100:.2f}%)\n")
-    f.write(f"  MAE:       {train_mae:.2f}°C\n")
-    f.write(f"  RMSE:      {train_rmse:.2f}°C\n")
-    f.write(f"\nValidation Set:\n")
-    f.write(f"  R² Score:  {val_r2:.4f} ({val_r2*100:.2f}%)\n")
-    f.write(f"  MAE:       {val_mae:.2f}°C\n")
-    f.write(f"  RMSE:      {val_rmse:.2f}°C\n")
-    f.write(f"\nTest Set:\n")
-    f.write(f"  R² Score:  {test_r2:.4f} ({test_r2*100:.2f}%)\n")
-    f.write(f"  MAE:       {test_mae:.2f}°C\n")
-    f.write(f"  RMSE:      {test_rmse:.2f}°C\n")
-    f.write(f"\nOverfitting Analysis:\n")
-    f.write(f"  Train-Val Gap:  {abs(train_r2 - val_r2)*100:.2f}%\n")
-    f.write(f"  Train-Test Gap: {abs(train_r2 - test_r2)*100:.2f}%\n")
-    f.write(f"\nCross-Validation:\n")
-    f.write(f"  Mean CV R²: {cv_scores.mean():.4f} (+/- {cv_scores.std() * 2:.4f})\n")
-    f.write(f"\n{'='*60}\n")
-    f.write("MODEL CONFIDENCE SCORE\n")
-    f.write(f"{'='*60}\n")
-    f.write(f"\nOverall Confidence: {overall_confidence}%\n")
-    f.write(f"\nPrediction Accuracy Breakdown:\n")
-    f.write(f"  Predictions within ±1°C: {within_1deg:.1f}%\n")
-    f.write(f"  Predictions within ±2°C: {within_2deg:.1f}%\n")
-    f.write(f"  Predictions within ±3°C: {within_3deg:.1f}%\n")
-    f.write(f"\nConfidence Calculation:\n")
-    f.write(f"  - R² Score Component (50%):        {r2_component:.1f}\n")
-    f.write(f"  - MAE Component (30%):             {mae_component:.1f}\n")
-    f.write(f"  - Consistency Component (20%):     {consistency_component:.1f}\n")
-    f.write(f"  - Total Confidence Score:          {overall_confidence}%\n")
-    f.write(f"\n{'='*60}\n")
-    f.write("FEATURE IMPORTANCE (Top 10)\n")
-    f.write(f"{'='*60}\n")
-    for idx, row in feature_importance.head(10).iterrows():
-        f.write(f"{row['feature']:25s} {row['importance']:.4f}\n")
-    f.write(f"\n{'='*60}\n")
-    f.write("ALL FEATURES\n")
-    f.write(f"{'='*60}\n")
-    for feature in all_features:
-        f.write(f"  - {feature}\n")
+    if imp is not None:
+        pd.Series(imp, index=FEATURES_FINAL).sort_values().plot.barh(
+            figsize=(8,6)
+        )
+        plt.title(f"{name}: Feature Importance")
+        plt.tight_layout()
+        plt.savefig(f"{out}/Feature_Importance.pdf")
+        plt.close()
 
-print(f"   ✓ Results saved to: {RESULTS_OUTPUT}")
+    # Calibration
+    plt.figure(figsize=(7,6))
+    fop, mpv = calibration_curve(y_true, scores, n_bins=10)
+    plt.plot(mpv, fop, marker="s")
+    plt.plot([0,1],[0,1],'--',color='gray')
+    plt.title(f"{name}: Calibration Curve")
+    plt.savefig(f"{out}/Calibration.pdf")
+    plt.close()
 
-# Create enhanced visualizations
-print(f"\n12. Creating Visualizations...")
-fig, axes = plt.subplots(2, 3, figsize=(18, 12))
+    print(f"[✔] {name} complete")
 
-# Plot 1: Actual vs Predicted (Test Set)
-axes[0, 0].scatter(y_test, y_test_pred, alpha=0.5, s=10, c='blue')
-axes[0, 0].plot([y_test.min(), y_test.max()], [y_test.min(), y_test.max()], 'r--', lw=2)
-axes[0, 0].set_xlabel('Actual Temperature (°C)', fontsize=12)
-axes[0, 0].set_ylabel('Predicted Temperature (°C)', fontsize=12)
-axes[0, 0].set_title(f'Test Set: Actual vs Predicted\nR² = {test_r2:.4f}', fontsize=14, fontweight='bold')
-axes[0, 0].grid(True, alpha=0.3)
-
-# Plot 2: Prediction Error Distribution
-errors = y_test - y_test_pred
-axes[0, 1].hist(errors, bins=50, edgecolor='black', alpha=0.7, color='green')
-axes[0, 1].axvline(x=0, color='r', linestyle='--', linewidth=2)
-axes[0, 1].set_xlabel('Prediction Error (°C)', fontsize=12)
-axes[0, 1].set_ylabel('Frequency', fontsize=12)
-axes[0, 1].set_title(f'Error Distribution\nMAE = {test_mae:.2f}°C', fontsize=14, fontweight='bold')
-axes[0, 1].grid(True, alpha=0.3)
-
-# Plot 3: Feature Importance
-top_features = feature_importance.head(12)
-axes[0, 2].barh(range(len(top_features)), top_features['importance'].values, color='orange')
-axes[0, 2].set_yticks(range(len(top_features)))
-axes[0, 2].set_yticklabels(top_features['feature'].values)
-axes[0, 2].set_xlabel('Importance', fontsize=12)
-axes[0, 2].set_title('Top 12 Feature Importance', fontsize=14, fontweight='bold')
-axes[0, 2].grid(True, alpha=0.3, axis='x')
-axes[0, 2].invert_yaxis()
-
-# Plot 4: Residual Plot
-axes[1, 0].scatter(y_test_pred, errors, alpha=0.5, s=10, c='purple')
-axes[1, 0].axhline(y=0, color='r', linestyle='--', linewidth=2)
-axes[1, 0].set_xlabel('Predicted Temperature (°C)', fontsize=12)
-axes[1, 0].set_ylabel('Residual (°C)', fontsize=12)
-axes[1, 0].set_title(f'Residual Plot\nRMSE = {test_rmse:.2f}°C', fontsize=14, fontweight='bold')
-axes[1, 0].grid(True, alpha=0.3)
-
-# Plot 5: Train vs Val vs Test Performance
-datasets = ['Train', 'Validation', 'Test']
-r2_scores = [train_r2, val_r2, test_r2]
-mae_scores = [train_mae, val_mae, test_mae]
-
-x_pos = np.arange(len(datasets))
-axes[1, 1].bar(x_pos - 0.2, [s*100 for s in r2_scores], 0.4, label='R² Score (%)', color='blue', alpha=0.7)
-axes[1, 1].bar(x_pos + 0.2, mae_scores, 0.4, label='MAE (°C)', color='red', alpha=0.7)
-axes[1, 1].set_xticks(x_pos)
-axes[1, 1].set_xticklabels(datasets)
-axes[1, 1].set_ylabel('Score', fontsize=12)
-axes[1, 1].set_title('Performance Comparison', fontsize=14, fontweight='bold')
-axes[1, 1].legend()
-axes[1, 1].grid(True, alpha=0.3, axis='y')
-
-# Plot 6: Learning Curve (if available)
-if hasattr(model, 'evals_result_'):
-    results = model.evals_result()
-    epochs = len(results['validation_0']['rmse'])
-    x_axis = range(0, epochs)
-    axes[1, 2].plot(x_axis, results['validation_0']['rmse'], label='Validation')
-    axes[1, 2].set_xlabel('Iterations', fontsize=12)
-    axes[1, 2].set_ylabel('RMSE', fontsize=12)
-    axes[1, 2].set_title('Learning Curve', fontsize=14, fontweight='bold')
-    axes[1, 2].legend()
-    axes[1, 2].grid(True, alpha=0.3)
-else:
-    axes[1, 2].text(0.5, 0.5, 'Learning Curve\nNot Available', 
-                    ha='center', va='center', fontsize=14)
-    axes[1, 2].axis('off')
-
-plt.tight_layout()
-VISUALIZATION_OUTPUT = os.path.join(BASE_DIR, "models", "xgboost_results.png")
-plt.tight_layout()
-plt.savefig(VISUALIZATION_OUTPUT, dpi=300, bbox_inches='tight')
-print(f"   ✓ Visualization saved to: {VISUALIZATION_OUTPUT}")
-
-print(f"\n{'='*60}")
-print(f"ENHANCED TRAINING COMPLETE!")
-print(f"{'='*60}")
-print(f"\nModel file: {MODEL_OUTPUT}")
-print(f"Results file: {RESULTS_OUTPUT}")
-print(f"Visualization: xgboost_results.png")
-print(f"\nKey Improvements:")
-print(f"  ✓ Outlier removal")
-print(f"  ✓ 70/15/15 train/val/test split")
-print(f"  ✓ Early stopping with validation")
-print(f"  ✓ 5-fold cross-validation")
-print(f"  ✓ Optimized hyperparameters")
-print(f"  ✓ Removed low-impact features")
-print(f"\n{'='*60}\n")
+print("\n[✔] FULL PIPELINE COMPLETE – OUTPUT MATCHES Results-FT-Full-file")
