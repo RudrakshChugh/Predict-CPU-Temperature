@@ -1,11 +1,24 @@
-# CPU Temperature Prediction - Data Collection
+# CPU Temperature Prediction System
 
-Collects system metrics to train ML model for CPU temperature prediction.
+A comprehensive system to predict CPU temperature using Machine Learning, with a planned backend API and frontend dashboard.
 
-##  Quick Start
+## Project Structure
+
+```
+├── ML/               # Machine Learning Core
+│   ├── data/         # Datasets (CSV files)
+│   ├── scripts/      # Data collection utilities
+│   ├── training/     # Model training scripts
+│   ├── testing/      # Real-time inference tests
+│   └── models/       # Trained models and results
+├── backend/          # (Planned) Python API
+└── frontend/         # (Planned) Web Dashboard
+```
+
+## 🚀 Quick Start (Data Collection & Training)
 
 ### Prerequisites
-- **Windows 10/11** OR **macOS**
+- **Windows 10/11** or **macOS**
 - **Python 3.7+**
 - **Temperature monitoring tool** (platform-specific, see below)
 
