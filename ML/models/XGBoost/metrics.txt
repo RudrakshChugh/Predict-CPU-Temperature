@@ -1,0 +1,19 @@
+MODEL PERFORMANCE REPORT: XGBoost
+==================================================
+Generated: 2026-02-23 16:07:47.724677
+
+--- REGRESSION ---
+R2 Score (Test):  0.9736
+MAE:              0.64 °C
+RMSE:             1.01 °C
+Confidence Score: 91.2%
+
+--- CLASSIFICATION (Threshold: 80.0°C) ---
+Accuracy:    0.9827
+Precision:   0.8946
+Recall:      0.9433
+Specificity: 0.9872
+F1-Score:    0.9183
+ROC-AUC:     0.9976
+PR-AUC:      0.9806
+Calibration (ECE): 0.1686

@@ -12,6 +12,10 @@ ENV/
 *.csv
 ML/data/
 
+# ML model artifacts (too large for git)
+*.pkl
+*.pdf
+
 # IDE
 .vscode/
 .idea/

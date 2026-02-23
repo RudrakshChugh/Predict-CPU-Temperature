@@ -1,0 +1,19 @@
+MODEL PERFORMANCE REPORT: LinearRegression
+==================================================
+Generated: 2026-02-23 16:07:36.299910
+
+--- REGRESSION ---
+R2 Score (Test):  0.9593
+MAE:              0.85 °C
+RMSE:             1.26 °C
+Confidence Score: 87.4%
+
+--- CLASSIFICATION (Threshold: 80.0°C) ---
+Accuracy:    0.9832
+Precision:   0.9362
+Recall:      0.8980
+Specificity: 0.9930
+F1-Score:    0.9167
+ROC-AUC:     0.9976
+PR-AUC:      0.9797
+Calibration (ECE): 0.1613

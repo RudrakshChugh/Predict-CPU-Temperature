@@ -1,0 +1,19 @@
+MODEL PERFORMANCE REPORT: RidgeRegression
+==================================================
+Generated: 2026-02-23 16:07:37.861932
+
+--- REGRESSION ---
+R2 Score (Test):  0.9594
+MAE:              0.86 °C
+RMSE:             1.25 °C
+Confidence Score: 87.4%
+
+--- CLASSIFICATION (Threshold: 80.0°C) ---
+Accuracy:    0.9825
+Precision:   0.9276
+Recall:      0.9002
+Specificity: 0.9919
+F1-Score:    0.9137
+ROC-AUC:     0.9976
+PR-AUC:      0.9804
+Calibration (ECE): 0.1624

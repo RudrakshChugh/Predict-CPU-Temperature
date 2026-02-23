@@ -1,0 +1,19 @@
+MODEL PERFORMANCE REPORT: ExtraTrees
+==================================================
+Generated: 2026-02-23 16:07:45.017381
+
+--- REGRESSION ---
+R2 Score (Test):  0.9678
+MAE:              0.74 °C
+RMSE:             1.12 °C
+Confidence Score: 89.4%
+
+--- CLASSIFICATION (Threshold: 80.0°C) ---
+Accuracy:    0.9827
+Precision:   0.9015
+Recall:      0.9342
+Specificity: 0.9883
+F1-Score:    0.9176
+ROC-AUC:     0.9975
+PR-AUC:      0.9797
+Calibration (ECE): 0.1685

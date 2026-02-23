@@ -1,0 +1,19 @@
+MODEL PERFORMANCE REPORT: RandomForest
+==================================================
+Generated: 2026-02-23 16:07:42.782074
+
+--- REGRESSION ---
+R2 Score (Test):  0.9757
+MAE:              0.62 °C
+RMSE:             0.97 °C
+Confidence Score: 91.4%
+
+--- CLASSIFICATION (Threshold: 80.0°C) ---
+Accuracy:    0.9832
+Precision:   0.8985
+Recall:      0.9433
+Specificity: 0.9878
+F1-Score:    0.9204
+ROC-AUC:     0.9976
+PR-AUC:      0.9799
+Calibration (ECE): 0.1715

@@ -1,0 +1,19 @@
+MODEL PERFORMANCE REPORT: LightGBM
+==================================================
+Generated: 2026-02-23 15:39:04.930496
+
+--- REGRESSION ---
+R2 Score (Test):  0.9761
+MAE:              0.59 °C
+RMSE:             0.96 °C
+Confidence Score: 91.9%
+
+--- CLASSIFICATION (Threshold: 80.0°C) ---
+Accuracy:    0.9823
+Precision:   0.8858
+Recall:      0.9501
+Specificity: 0.9859
+F1-Score:    0.9168
+ROC-AUC:     0.9977
+PR-AUC:      0.9803
+Calibration (ECE): 0.1727

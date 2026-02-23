@@ -12,7 +12,9 @@ import os
 
 # --- CONFIGURATION ---
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-MODEL_FILE = os.path.join(BASE_DIR, "models", "cpu_xgboost_model.pkl")
+MODELS_DIR = os.path.join(BASE_DIR, "models")
+MODEL_FILE = os.path.join(MODELS_DIR, "XGBoost", "XGBoost_model.pkl")
+SCALER_FILE = os.path.join(MODELS_DIR, "data_scaler.pkl")
 SAMPLING_INTERVAL = 1.0  # seconds
 IDLE_THRESHOLD = 5.0     # CPU % below which system is considered idle
 
@@ -26,6 +28,14 @@ class RealtimeTester:
             print(f"Loaded model from {MODEL_FILE}")
         except Exception as e:
             print(f"Error loading model: {e}")
+            exit(1)
+
+        # Load the scaler (MUST match the one used during training)
+        try:
+            self.scaler = joblib.load(SCALER_FILE)
+            print(f"Loaded scaler from {SCALER_FILE}")
+        except Exception as e:
+            print(f"Error loading scaler: {e}")
             exit(1)
 
         # Initialize WMI for temperature reading
@@ -190,9 +200,15 @@ class RealtimeTester:
                 }
                 
                 df_input = pd.DataFrame(features)
-                
-                # --- 3. Predict ---
-                predicted_temp = self.model.predict(df_input)[0]
+
+                # --- 3. Scale (must match StandardScaler used in training) ---
+                df_input_scaled = pd.DataFrame(
+                    self.scaler.transform(df_input),
+                    columns=df_input.columns
+                )
+
+                # --- 4. Predict ---
+                predicted_temp = self.model.predict(df_input_scaled)[0]
                 
                 # --- 4. Display ---
                 actual_str = f"{cpu_temp:.1f}°C" if cpu_temp is not None else "N/A"
