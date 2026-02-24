@@ -82,7 +82,7 @@ const SystemLayer = ({ data }) => {
           alignItems: 'baseline',
           gap: '4px'
         }}>
-           <span className="text-value" style={{ fontSize: '1.5rem', fontWeight: 500 }}>{currentTemp}°C</span>
+           <span className="text-value" style={{ fontSize: '1.5rem', fontWeight: 500 }}>{predictedTemp}°C</span>
         </div>
       </div>
 

@@ -31,58 +31,18 @@ function App() {
   });
 
   useEffect(() => {
-    // Simulation Tick
-    const interval = setInterval(() => {
-      setData(prev => {
-        // Random walk simulation
-        const cpuUtil = Math.min(100, Math.max(0, prev.context.cpuUtil + (Math.random() - 0.5) * 5));
-        const tempChange = (cpuUtil - 50) * 0.05;
-        const newTemp = Math.min(95, Math.max(20, prev.system.currentTemp + tempChange));
-        
-        // Generate history point
-        const newPoint = { time: new Date().getSeconds(), temp: newTemp };
-        const history = [...(prev.intelligence.predictionHistory || []), newPoint].slice(-20);
+    const fetchData = async () => {
+      try {
+        const res = await fetch('http://localhost:8000/api/status');
+        const json = await res.json();
+        setData(json);
+      } catch (e) {
+        // Keep previous data on error
+      }
+    };
 
-        // Determine State
-        let status = 'STABLE';
-        let reason = 'System operating efficiently.';
-        let action = 'No action required.';
-
-        if (newTemp > 75) {
-          status = 'CRITICAL';
-          reason = 'Thermal runaway detected due to sustained high utilization.';
-          action = 'IMMEDIATE: Throttle CPU voltage and increase fan speed to 100%.';
-        } else if (newTemp > 60) {
-          status = 'WATCH';
-          reason = 'Temperature rising above optimal baseline.';
-          action = 'Increase fan speed by 20% preemptively.';
-        }
-
-        return {
-          context: {
-            ...prev.context,
-            cpuUtil: Math.floor(cpuUtil),
-            memoryUsage: 12 + Math.random(),
-            clockSpeed: 3.2 + (Math.random() - 0.5) * 0.1,
-            voltage: 1.1 + (Math.random() - 0.5) * 0.05,
-            current: 40 + (cpuUtil * 0.5)
-          },
-          system: {
-            currentTemp: Math.floor(newTemp),
-            predictedTemp: Math.floor(newTemp + (Math.random() * 5))
-          },
-          intelligence: {
-            predictionHistory: history
-          },
-          decision: {
-            status,
-            reason,
-            action
-          }
-        };
-      });
-    }, 1000);
-
+    fetchData();                          // Fire immediately on mount
+    const interval = setInterval(fetchData, 1000);
     return () => clearInterval(interval);
   }, []);
 

@@ -71,11 +71,11 @@ print(f"[✔] Scaler loaded.")
 # Try WMI for real CPU temperature (Windows + OpenHardwareMonitor)
 try:
     import wmi as _wmi
-    _w = _wmi.WMI(namespace="root\\OpenHardwareMonitor")
+    _test_w = _wmi.WMI(namespace="root\\OpenHardwareMonitor")
     _ohm_available = True
+    del _test_w   # don't keep a stale connection; create fresh ones per-call
     print("[✔] OpenHardwareMonitor connected — real CPU temp available.")
 except Exception:
-    _w = None
     _ohm_available = False
     print("[!] OpenHardwareMonitor not detected — cpu_temp will be None.")
 
@@ -88,6 +88,7 @@ _cpu_60s    = deque(maxlen=60)
 _therm_hist = deque(maxlen=10)
 _temp_lag_hist = deque(maxlen=6)   # last 6 temps for lag-1/2/5 + rolling-5
 _temp_history: List[dict] = []     # for prediction history chart (max 20 points)
+_tick_counter  = 0                 # incrementing counter for chart X-axis
 
 _prev_temp     = None
 _last_idle_t   = time.time()
@@ -101,9 +102,15 @@ def get_cpu_temp() -> float | None:
     if not _ohm_available:
         return None
     try:
-        for sensor in _w.Sensor():
-            if sensor.SensorType == "Temperature" and "CPU Package" in sensor.Name:
-                return round(float(sensor.Value), 2)
+        import pythoncom
+        pythoncom.CoInitialize()   # required: FastAPI runs handlers in worker threads
+        try:
+            w = _wmi.WMI(namespace="root\\OpenHardwareMonitor")
+            for sensor in w.Sensor():
+                if sensor.SensorType == "Temperature" and "CPU Package" in sensor.Name:
+                    return round(float(sensor.Value), 2)
+        finally:
+            pythoncom.CoUninitialize()
     except Exception:
         pass
     return None
@@ -218,10 +225,12 @@ def collect_and_predict():
     df_scaled = pd.DataFrame(scaler.transform(df), columns=df.columns)
 
     predicted_temp = round(float(model.predict(df_scaled)[0]), 1)
-    current_temp   = int(cpu_temp) if cpu_temp is not None else predicted_temp
+    current_temp   = round(cpu_temp, 1) if cpu_temp is not None else predicted_temp
 
     # ── History (for chart) ──
-    _temp_history.append({"time": datetime.now().second, "temp": predicted_temp})
+    global _tick_counter
+    _tick_counter += 1
+    _temp_history.append({"time": _tick_counter, "temp": predicted_temp})
     if len(_temp_history) > 20:
         _temp_history.pop(0)
 
@@ -300,3 +309,29 @@ def get_status():
 @app.get("/health", summary="Health check")
 def health():
     return {"status": "ok", "model": model_name}
+
+
+@app.get("/debug/sensors", summary="Debug: list all OHM temperature sensors")
+def debug_sensors():
+    """Temporary endpoint to debug sensor readings."""
+    if not _ohm_available:
+        return {"error": "OHM not available"}
+    try:
+        import pythoncom
+        pythoncom.CoInitialize()
+        try:
+            w = _wmi.WMI(namespace="root\\OpenHardwareMonitor")
+            sensors = []
+            for s in w.Sensor():
+                if s.SensorType == "Temperature":
+                    sensors.append({
+                        "name": s.Name,
+                        "value": float(s.Value),
+                        "identifier": s.Identifier
+                    })
+            cpu_temp = get_cpu_temp()
+            return {"sensors": sensors, "get_cpu_temp_result": cpu_temp}
+        finally:
+            pythoncom.CoUninitialize()
+    except Exception as e:
+        return {"error": str(e)}
